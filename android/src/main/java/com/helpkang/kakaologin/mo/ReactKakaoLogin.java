@@ -6,12 +6,16 @@ package com.helpkang.kakaologin.mo;
 
 import android.app.Activity;
 import android.content.Context;
+import android.support.annotation.RequiresPermission;
 import android.util.Log;
 
 import com.facebook.react.bridge.Arguments;
 import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
+import com.facebook.react.bridge.ReadableMap;
+import com.facebook.react.bridge.ReadableMapKeySetIterator;
 import com.facebook.react.bridge.WritableMap;
+import com.kakao.auth.ApiResponseCallback;
 import com.kakao.auth.ApprovalType;
 import com.kakao.auth.AuthType;
 import com.kakao.auth.IApplicationConfig;
@@ -24,8 +28,12 @@ import com.kakao.network.ErrorResult;
 import com.kakao.usermgmt.UserManagement;
 import com.kakao.usermgmt.callback.LogoutResponseCallback;
 import com.kakao.usermgmt.callback.MeResponseCallback;
+import com.kakao.usermgmt.response.model.User;
 import com.kakao.usermgmt.response.model.UserProfile;
 import com.kakao.util.exception.KakaoException;
+
+import java.util.HashMap;
+import java.util.Map;
 
 import static com.kakao.usermgmt.UserManagement.requestMe;
 
@@ -38,7 +46,8 @@ public class ReactKakaoLogin {
     private final ReactApplicationContext reactApplicationContext;
 
     private Activity currentActivity;
-    private SessionCallback sessionCallback;
+    private SignUpSessionCallback signUpSessionCallback;
+    private LoginSessionCallback loginSessionCallback;
     private boolean init = false;
 
 
@@ -71,12 +80,11 @@ public class ReactKakaoLogin {
      */
     public void login(Promise promise) {
         initialize();
-        this.sessionCallback = new SessionCallback(promise);
-        Session.getCurrentSession().addCallback(sessionCallback);
+        this.loginSessionCallback = new LoginSessionCallback(promise);
+        Session.getCurrentSession().addCallback(loginSessionCallback);
         Session.getCurrentSession().open(AuthType.KAKAO_TALK, currentActivity);
-
-
     }
+
 
     /**
      * Log out
@@ -93,6 +101,18 @@ public class ReactKakaoLogin {
         promise.resolve(response);
     }
 
+    /**
+     *
+     * @param properties Additional User information
+     * @param promise Promise
+     */
+    public void signUp(ReadableMap properties, Promise promise) {
+        initialize();
+        this.signUpSessionCallback = new SignUpSessionCallback(properties, promise);
+        Session.getCurrentSession().addCallback(signUpSessionCallback);
+        Session.getCurrentSession().open(AuthType.KAKAO_TALK, currentActivity);
+    }
+
 
     /**
      * Result
@@ -101,7 +121,6 @@ public class ReactKakaoLogin {
     private WritableMap convertMapUserProfile(UserProfile userProfile) {
         Log.v(LOG_TAG, "kakao : handleResult");
         WritableMap response = Arguments.createMap();
-
 
         response.putString("id", userProfile.getId()+"");
         response.putString("nickname", userProfile.getNickname());
@@ -113,37 +132,100 @@ public class ReactKakaoLogin {
         return response;
     }
 
+    /**
+     * class SignUpSessionCallback
+     */
+    private class SignUpSessionCallback implements ISessionCallback {
+
+        private ReadableMap properties;
+        private Promise promise;
+
+        public SignUpSessionCallback(ReadableMap properties, Promise promise) {
+            this.promise = promise;
+            this.properties = properties;
+        }
+
+        @Override
+        public void onSessionOpened() {
+            UserManagement.requestSignup(
+                    new ApiResponseCallback<Long>() {
+                        @Override
+                        public void onSuccess(Long userId) {
+                            Log.v(LOG_TAG, "kakao : LoginSessionCallback.onSessionOpened.requestSignup.onSuccess - " + userId);
+                            promise.resolve(userId);
+                        }
+
+                        @Override
+                        public void onSessionClosed(ErrorResult errorResult) {
+                            Log.v(LOG_TAG, "kakao : LoginSessionCallback.onSessionOpened.requestSignup.onSessionClosed - " + errorResult);
+                            Session.getCurrentSession().checkAndImplicitOpen();
+                        }
+
+                        @Override
+                        public void onNotSignedUp() {
+                            Log.v(LOG_TAG, "kakao : LoginSessionCallback.onSessionOpened.requestSignup.onNotSignedUp");
+                            promise.reject("onNotSignedUp", "User canceled to sign up");
+                        }
+                    }, convertReadableMap(properties));
+        }
+
+        @Override
+        public void onSessionOpenFailed(KakaoException exception) {
+            if (exception != null) {
+                Log.v(LOG_TAG, "kakao : onSessionOpenFailed" + exception.toString());
+            }
+        }
+
+        /**
+         * Convert <code>ReadableMap</code> to <code>java.util.Map</code>
+         * @param map ReadableMap
+         * @return java.util.Map
+         */
+        private Map<String, String> convertReadableMap(ReadableMap map) {
+            Map<String, String> result = new HashMap<>();
+
+            if(map != null) {
+                String key;
+                for (ReadableMapKeySetIterator iter = map.keySetIterator(); iter.hasNextKey(); ) {
+                    key = iter.nextKey();
+                    result.put(key, map.getString(key));
+                }
+            }
+
+            return result;
+        }
+    }
 
     /**
      * Class SessonCallback
      */
-    private class SessionCallback implements ISessionCallback {
+    private class LoginSessionCallback implements ISessionCallback {
         private final Promise promise;
 
-        public SessionCallback(Promise promise) {
+        public LoginSessionCallback(Promise promise) {
             this.promise = promise;
         }
 
 //        private CallbackContext callbackContext;
 //
-//        public SessionCallback(final CallbackContext callbackContext) {
+//        public LoginSessionCallback(final CallbackContext callbackContext) {
 //            this.callbackContext = callbackContext;
 //        }
 
         @Override
         public void onSessionOpened() {
-            Log.v(LOG_TAG, "kakao : SessionCallback.onSessionOpened");
+            Log.v(LOG_TAG, "kakao : LoginSessionCallback.onSessionOpened");
             requestMe(new MeResponseCallback() {
                 @Override
                 public void onFailure(ErrorResult errorResult) {
                     removeCallback();
                     promise.reject("onFaileure", "로그인 실패");
-//                    callbackContext.error("kakao : SessionCallback.onSessionOpened.requestMe.onFailure - " + errorResult);
+//                    callbackContext.error("kakao : LoginSessionCallback.onSessionOpened.requestMe.onFailure - " + errorResult);
                 }
 
                 @Override
                 public void onSessionClosed(ErrorResult errorResult) {
-                    Log.v(LOG_TAG, "kakao : SessionCallback.onSessionOpened.requestMe.onSessionClosed - " + errorResult);
+                    Log.v(LOG_TAG, "kakao : LoginSessionCallback.onSessionOpened.requestMe.onSessionClosed - " + errorResult);
                     Session.getCurrentSession().checkAndImplicitOpen();
                 }
 
@@ -164,7 +246,7 @@ public class ReactKakaoLogin {
 //                    callbackContext.error("this user is not signed up");
                 }
                 private void removeCallback(){
-                    Session.getCurrentSession().removeCallback(sessionCallback);
+                    Session.getCurrentSession().removeCallback(loginSessionCallback);
                 }
             });
         }

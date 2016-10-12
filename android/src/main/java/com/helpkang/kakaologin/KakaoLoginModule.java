@@ -8,6 +8,7 @@ import com.facebook.react.bridge.Promise;
 import com.facebook.react.bridge.ReactApplicationContext;
 import com.facebook.react.bridge.ReactContextBaseJavaModule;
 import com.facebook.react.bridge.ReactMethod;
+import com.facebook.react.bridge.ReadableMap;
 import com.helpkang.kakaologin.mo.ReactKakaoLogin;
 import com.kakao.auth.Session;
 
@@ -30,6 +31,11 @@ public class KakaoLoginModule extends ReactContextBaseJavaModule implements Acti
     public void logout(Promise promise){
 //        initKakao();
         rkl.logout(promise);
+    }
+
+    @ReactMethod
+    public void signUp(ReadableMap properties, Promise promise){
+        rkl.signUp(properties, promise);
     }
 
     public void initKakao(){
